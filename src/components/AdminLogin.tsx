@@ -30,10 +30,31 @@ export function AdminLogin() {
         <p className="admin-card__lead">Use your approved Gmail to add photos and descriptions.</p>
 
         {!isSupabaseConfigured && (
-          <p className="admin-alert admin-alert--warn">
-            Supabase is not connected yet. Add <code>VITE_SUPABASE_URL</code> and{' '}
-            <code>VITE_SUPABASE_ANON_KEY</code> (see <code>docs/SUPABASE_SETUP.md</code>).
-          </p>
+          <div className="admin-alert admin-alert--warn admin-setup">
+            <p>
+              <strong>Supabase is not connected on this deploy.</strong> You do <strong>not</strong> add keys in
+              GitHub — only in <strong>Netlify → Environment variables</strong>, then redeploy.
+            </p>
+            {typeof __SUPABASE_CONFIGURED_AT_BUILD__ !== 'undefined' &&
+              !__SUPABASE_CONFIGURED_AT_BUILD__ && (
+                <p className="admin-setup__hint">
+                  This build was created <strong>without</strong> those variables. Add them in Netlify, then use{' '}
+                  <strong>Deploys → Trigger deploy → Clear cache and deploy site</strong> (not only “Retry”).
+                </p>
+              )}
+            <ul className="admin-setup__list">
+              <li>
+                <code>VITE_SUPABASE_URL</code> (must start with https://)
+              </li>
+              <li>
+                <code>VITE_SUPABASE_ANON_KEY</code> (long eyJ… key, not service_role)
+              </li>
+            </ul>
+            <p className="admin-setup__hint">
+              Scopes: include <strong>Production</strong>. No quotes around values. Then hard-refresh this page
+              (Cmd+Shift+R).
+            </p>
+          </div>
         )}
 
         <form className="admin-form" onSubmit={handleSubmit}>

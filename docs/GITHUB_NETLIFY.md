@@ -40,14 +40,13 @@ Your `.env` file is **not** uploaded (secrets stay on your Mac only).
 3. Build settings (should auto-detect from `netlify.toml`):
    - Build command: `npm run build`
    - Publish directory: `dist`
-4. **Environment variables** — add all keys from `.env` and Google Drive setup:
+4. **Environment variables** — see **`docs/NETLIFY_ENV.md`** (required or admin shows “Supabase is not connected”):
    - `VITE_SUPABASE_URL`
    - `VITE_SUPABASE_ANON_KEY`
-   - `SUPABASE_URL` (same as above, without `VITE_`)
+   - `SUPABASE_URL` (same URL as above)
    - `SUPABASE_SERVICE_ROLE_KEY`
-   - `GOOGLE_SERVICE_ACCOUNT_JSON`
-   - `GOOGLE_DRIVE_FOLDER_ID`
-5. **Deploy site**
+   - Optional Drive: `GOOGLE_SERVICE_ACCOUNT_JSON`, `GOOGLE_DRIVE_FOLDER_ID`
+5. **Deploy site**, then **Trigger deploy** again whenever you change env vars
 
 Every `git push` will redeploy automatically.
 
