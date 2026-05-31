@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import {
   createDriveMediaPost,
@@ -31,7 +31,9 @@ export function AdminDashboard() {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [driveLink, setDriveLink] = useState('');
+  const [videoMode, setVideoMode] = useState<'link' | 'file'>('link');
   const [driveReady, setDriveReady] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [driveSetup, setDriveSetup] = useState<DriveSetupStatus | null>(null);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [message, setMessage] = useState('');
@@ -55,6 +57,7 @@ export function AdminDashboard() {
     void checkDriveSetup().then((status) => {
       setDriveSetup(status);
       setDriveReady(status.configured);
+      setVideoMode(status.configured ? 'file' : 'link');
     });
   }, []);
 
@@ -85,8 +88,8 @@ export function AdminDashboard() {
       return;
     }
 
-    const useDriveUpload = driveReady && file;
-    const useDriveLink = mediaType === 'video' && driveLink.trim() && !file;
+    const useDriveUpload = driveReady && file && mediaType === 'video' && videoMode === 'file';
+    const useDriveLink = mediaType === 'video' && driveLink.trim() && (videoMode === 'link' || !driveReady);
     const useSupabasePhoto = mediaType === 'photo' && file && !driveReady;
 
     if (mediaType === 'photo' && !file) {
@@ -94,13 +97,15 @@ export function AdminDashboard() {
       return;
     }
 
-    if (mediaType === 'video' && !file && !driveLink.trim()) {
-      setError(driveReady ? 'Choose a video file to upload to your Drive folder.' : 'Choose a video file or paste a Drive link.');
+    const useVideoLink = mediaType === 'video' && (videoMode === 'link' || !driveReady);
+
+    if (mediaType === 'video' && useVideoLink && !driveLink.trim()) {
+      setError('Paste your Google Drive share link.');
       return;
     }
 
-    if (mediaType === 'video' && file && !driveReady) {
-      setError('Automatic Drive upload is not set up yet. Paste a Drive share link, or follow docs/GOOGLE_DRIVE_SETUP.md');
+    if (mediaType === 'video' && !useVideoLink && !file) {
+      setError('Choose a video file to upload.');
       return;
     }
 
@@ -221,6 +226,7 @@ export function AdminDashboard() {
               onClick={() => {
                 setMediaType('photo');
                 onFileChange(null);
+                setDriveLink('');
               }}
             >
               Photo
@@ -231,65 +237,108 @@ export function AdminDashboard() {
               onClick={() => {
                 setMediaType('video');
                 onFileChange(null);
+                setDriveLink('');
+                setVideoMode(driveReady ? 'file' : 'link');
               }}
             >
               Video
             </button>
           </div>
 
-          <label className="admin-upload">
-            <span className="admin-upload__label">
-              {mediaType === 'video' ? 'Video file' : 'Photo'}
-              {driveReady ? ' → your Google Drive folder' : ''}
-            </span>
-            <input
-              type="file"
-              accept={mediaType === 'video' ? videoAccept : photoAccept}
-              onChange={(e) => onFileChange(e.target.files?.[0] ?? null)}
-            />
-            <span className="admin-upload__box">
+          {mediaType === 'video' && driveReady && (
+            <div className="admin-type-toggle" role="group" aria-label="Video source">
+              <button
+                type="button"
+                className={`admin-type-btn${videoMode === 'file' ? ' admin-type-btn--active' : ''}`}
+                onClick={() => {
+                  setVideoMode('file');
+                  setDriveLink('');
+                }}
+              >
+                Upload file
+              </button>
+              <button
+                type="button"
+                className={`admin-type-btn${videoMode === 'link' ? ' admin-type-btn--active' : ''}`}
+                onClick={() => {
+                  setVideoMode('link');
+                  onFileChange(null);
+                }}
+              >
+                Paste Drive link
+              </button>
+            </div>
+          )}
+
+          {mediaType === 'video' && (videoMode === 'link' || !driveReady) && (
+            <div className="admin-drive">
+              <label className="admin-field admin-field--drive">
+                <span>Google Drive share link</span>
+                <input
+                  type="text"
+                  inputMode="url"
+                  autoComplete="off"
+                  spellCheck={false}
+                  value={driveLink}
+                  onChange={(e) => setDriveLink(e.target.value)}
+                  placeholder="https://drive.google.com/file/d/…/view?usp=sharing"
+                />
+                <small className="admin-field__hint">
+                  Upload video to Drive first → Share → Anyone with the link → paste URL here.
+                </small>
+              </label>
+            </div>
+          )}
+
+          {(mediaType === 'photo' || (mediaType === 'video' && videoMode === 'file' && driveReady)) && (
+            <div className="admin-upload">
+              <span className="admin-upload__label">
+                {mediaType === 'video' ? 'Video file' : 'Photo'}
+                {driveReady && mediaType === 'video' ? ' → your Google Drive folder' : ''}
+              </span>
               {preview ? (
-                mediaType === 'video' ? (
-                  <video src={preview} className="admin-upload__preview" controls muted playsInline />
-                ) : (
-                  <img src={preview} alt="" className="admin-upload__preview" />
-                )
+                <div className="admin-upload__preview-wrap">
+                  {mediaType === 'video' ? (
+                    <video src={preview} className="admin-upload__preview" controls muted playsInline />
+                  ) : (
+                    <img src={preview} alt="" className="admin-upload__preview" />
+                  )}
+                  <button type="button" className="admin-btn admin-btn--ghost admin-upload__clear" onClick={() => onFileChange(null)}>
+                    Remove file
+                  </button>
+                </div>
               ) : (
-                <span className="admin-upload__placeholder">
-                  Tap to choose {mediaType === 'video' ? 'a video' : 'a photo'}
-                  <small>
-                    {driveReady
-                      ? 'Any size — uploads to your Drive folder'
-                      : mediaType === 'video'
-                        ? 'Set up Drive above, or paste a link below'
-                        : 'Photos under 15MB until Drive is connected'}
-                  </small>
-                </span>
+                <div className="admin-upload__box">
+                  <input
+                    ref={fileInputRef}
+                    className="admin-upload__file-input"
+                    type="file"
+                    accept={mediaType === 'video' ? videoAccept : photoAccept}
+                    onChange={(e) => onFileChange(e.target.files?.[0] ?? null)}
+                  />
+                  <button
+                    type="button"
+                    className="admin-upload__picker"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <span className="admin-upload__placeholder">
+                      Tap to choose {mediaType === 'video' ? 'a video' : 'a photo'}
+                      <small>
+                        {driveReady && mediaType === 'video'
+                          ? 'Any size — uploads to your Drive folder'
+                          : 'Photos under 15MB until Drive is connected'}
+                      </small>
+                    </span>
+                  </button>
+                </div>
               )}
-            </span>
-          </label>
+            </div>
+          )}
 
           {uploadProgress !== null && (
             <div className="admin-progress" role="progressbar" aria-valuenow={uploadProgress} aria-valuemin={0} aria-valuemax={100}>
               <div className="admin-progress__bar" style={{ width: `${uploadProgress}%` }} />
               <span className="admin-progress__text">Uploading to Drive… {uploadProgress}%</span>
-            </div>
-          )}
-
-          {mediaType === 'video' && (
-            <div className="admin-drive">
-              <label className="admin-field">
-                <span>{driveReady ? 'Or paste Google Drive link instead' : 'Paste Google Drive link'}</span>
-                <input
-                  type="url"
-                  value={driveLink}
-                  onChange={(e) => {
-                    setDriveLink(e.target.value);
-                    if (e.target.value) onFileChange(null);
-                  }}
-                  placeholder="https://drive.google.com/file/d/…/view"
-                />
-              </label>
             </div>
           )}
 
