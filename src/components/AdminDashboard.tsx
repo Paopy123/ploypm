@@ -90,7 +90,8 @@ export function AdminDashboard() {
 
     const useDriveUpload = driveReady && file && mediaType === 'video' && videoMode === 'file';
     const useDriveLink = mediaType === 'video' && driveLink.trim() && (videoMode === 'link' || !driveReady);
-    const useSupabasePhoto = mediaType === 'photo' && file && !driveReady;
+    // Photos always upload to Supabase. Drive is only for videos (large files).
+    const useSupabasePhoto = mediaType === 'photo' && file;
 
     if (mediaType === 'photo' && !file) {
       setError('Please choose a photo.');
@@ -106,6 +107,15 @@ export function AdminDashboard() {
 
     if (mediaType === 'video' && !useVideoLink && !file) {
       setError('Choose a video file to upload.');
+      return;
+    }
+
+    // Safety: if none of the branches match, stop and show an error.
+    const anyAction =
+      useDriveUpload || useSupabasePhoto || useDriveLink;
+
+    if (!anyAction) {
+      setError('Could not determine upload method. Please choose a file or a Drive link.');
       return;
     }
 
