@@ -10,12 +10,16 @@ export const WHATS_NEW_COUNT = 5;
 const MAX_PHOTO_BYTES = 15 * 1024 * 1024;
 
 const SELECT_BASIC =
-  'id, media_type, media_source, media_url, image_url, poster_url, drive_file_id, description, uploaded_by_email, unlock_at, created_at, sort_order, category_id';
+  'id, media_type, media_source, media_url, image_url, poster_url, drive_file_id, description, uploaded_by_email, unlock_at, created_at, sort_order, category_id, sub_section_id';
 
-const SELECT_FULL = `${SELECT_BASIC}, categories(id, name, slug)`;
+const SELECT_FULL = `${SELECT_BASIC}, categories(id, name, slug), sub_sections(id, name, slug, category_id)`;
 
-type RowWithCategory = ContentPostRow & {
+type RowWithRelations = ContentPostRow & {
   categories?: { id: string; name: string; slug: string } | { id: string; name: string; slug: string }[] | null;
+  sub_sections?:
+    | { id: string; name: string; slug: string; category_id: string }
+    | { id: string; name: string; slug: string; category_id: string }[]
+    | null;
 };
 
 function rowMediaUrl(row: ContentPostRow): string {
@@ -28,7 +32,7 @@ function resolveMediaSource(row: ContentPostRow, url: string): MediaSource {
   return 'supabase';
 }
 
-function categoryFromRow(row: RowWithCategory) {
+function categoryFromRow(row: RowWithRelations) {
   const cat = Array.isArray(row.categories) ? row.categories[0] : row.categories;
   return {
     categoryId: row.category_id ?? cat?.id ?? null,
@@ -37,7 +41,16 @@ function categoryFromRow(row: RowWithCategory) {
   };
 }
 
-function toContentItem(row: RowWithCategory): SiteContentItem {
+function subSectionFromRow(row: RowWithRelations) {
+  const sub = Array.isArray(row.sub_sections) ? row.sub_sections[0] : row.sub_sections;
+  return {
+    subSectionId: row.sub_section_id ?? sub?.id ?? null,
+    subSectionName: sub?.name ?? null,
+    subSectionSlug: sub?.slug ?? null,
+  };
+}
+
+function toContentItem(row: RowWithRelations): SiteContentItem {
   const rawUrl = rowMediaUrl(row);
   const mediaSource = resolveMediaSource(row, rawUrl);
   const driveFileId = row.drive_file_id ?? undefined;
@@ -50,6 +63,7 @@ function toContentItem(row: RowWithCategory): SiteContentItem {
   }
 
   const cat = categoryFromRow(row);
+  const sub = subSectionFromRow(row);
 
   return {
     id: row.id,
@@ -67,6 +81,9 @@ function toContentItem(row: RowWithCategory): SiteContentItem {
     categoryId: cat.categoryId,
     categoryName: cat.categoryName,
     categorySlug: cat.categorySlug,
+    subSectionId: sub.subSectionId,
+    subSectionName: sub.subSectionName,
+    subSectionSlug: sub.subSectionSlug,
   };
 }
 
@@ -96,7 +113,7 @@ async function fetchAllPosts(): Promise<SiteContentItem[]> {
     .select(SELECT_FULL)
     .order('created_at', { ascending: false });
 
-  let rows: RowWithCategory[];
+  let rows: RowWithRelations[];
 
   if (full.error) {
     console.warn('Content fetch (with categories):', full.error.message);
@@ -108,9 +125,9 @@ async function fetchAllPosts(): Promise<SiteContentItem[]> {
       console.warn('Content fetch:', basic.error.message);
       return [];
     }
-    rows = (basic.data ?? []) as RowWithCategory[];
+    rows = (basic.data ?? []) as RowWithRelations[];
   } else {
-    rows = (full.data ?? []) as RowWithCategory[];
+    rows = (full.data ?? []) as RowWithRelations[];
   }
 
   return rows.map(toContentItem).filter((item) => item.src);
@@ -142,6 +159,7 @@ export async function createPhotoPost(params: {
   unlockAt: Date;
   uploadedByEmail: string;
   categoryId: string;
+  subSectionId?: string | null;
 }): Promise<void> {
   if (!isSupabaseConfigured || !supabase) {
     throw new Error('Supabase is not connected.');
@@ -149,7 +167,7 @@ export async function createPhotoPost(params: {
 
   await requireAuthSession();
 
-  const { file, description, unlockAt, uploadedByEmail, categoryId } = params;
+  const { file, description, unlockAt, uploadedByEmail, categoryId, subSectionId } = params;
 
   if (file.size > MAX_PHOTO_BYTES) {
     throw new Error('Photo is too large. Use an image under 15MB, or paste a Google Drive link instead.');
@@ -179,6 +197,7 @@ export async function createPhotoPost(params: {
       uploaded_by_email: uploadedByEmail.trim().toLowerCase(),
       unlock_at: unlockAt.toISOString(),
       category_id: categoryId,
+      sub_section_id: subSectionId ?? null,
     });
   } catch (e) {
     await supabase.storage.from(GALLERY_BUCKET).remove([path]);
@@ -193,6 +212,7 @@ export async function createDriveMediaPost(params: {
   unlockAt: Date;
   uploadedByEmail: string;
   categoryId: string;
+  subSectionId?: string | null;
 }): Promise<void> {
   if (!isSupabaseConfigured || !supabase) throw new Error('Supabase is not connected.');
 
@@ -214,6 +234,7 @@ export async function createDriveMediaPost(params: {
     uploaded_by_email: email,
     unlock_at: params.unlockAt.toISOString(),
     category_id: params.categoryId,
+    sub_section_id: params.subSectionId ?? null,
   });
 }
 
@@ -224,6 +245,7 @@ export async function createFromDriveLink(params: {
   unlockAt: Date;
   uploadedByEmail: string;
   categoryId: string;
+  subSectionId?: string | null;
 }): Promise<void> {
   const parsed = parseDriveShareLink(params.driveShareLink);
   if (!parsed) {
@@ -237,6 +259,7 @@ export async function createFromDriveLink(params: {
     unlockAt: params.unlockAt,
     uploadedByEmail: params.uploadedByEmail,
     categoryId: params.categoryId,
+    subSectionId: params.subSectionId,
   });
 }
 
@@ -248,6 +271,19 @@ export async function updatePostCategory(postId: string, categoryId: string | nu
   const { error } = await supabase
     .from(GALLERY_TABLE)
     .update({ category_id: categoryId })
+    .eq('id', postId);
+
+  if (error) throw new Error(formatSupabaseError(error));
+}
+
+export async function updatePostSubSection(postId: string, subSectionId: string | null): Promise<void> {
+  if (!supabase) throw new Error('Supabase is not configured.');
+
+  await requireAuthSession();
+
+  const { error } = await supabase
+    .from(GALLERY_TABLE)
+    .update({ sub_section_id: subSectionId })
     .eq('id', postId);
 
   if (error) throw new Error(formatSupabaseError(error));

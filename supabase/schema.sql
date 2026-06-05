@@ -45,6 +45,53 @@ create policy "categories_admin_delete"
     )
   );
 
+create table if not exists public.sub_sections (
+  id uuid primary key default gen_random_uuid(),
+  category_id uuid not null references public.categories(id) on delete cascade,
+  name text not null,
+  slug text not null,
+  sort_order int not null default 0,
+  created_at timestamptz not null default now(),
+  unique (category_id, slug)
+);
+
+alter table public.sub_sections enable row level security;
+
+create policy "sub_sections_public_read"
+  on public.sub_sections for select
+  to anon, authenticated
+  using (true);
+
+create policy "sub_sections_admin_insert"
+  on public.sub_sections for insert
+  to authenticated
+  with check (
+    lower(coalesce(auth.jwt() ->> 'email', '')) in (
+      'pao51613@gmail.com',
+      'ploy.muennikorn@gmail.com'
+    )
+  );
+
+create policy "sub_sections_admin_update"
+  on public.sub_sections for update
+  to authenticated
+  using (
+    lower(coalesce(auth.jwt() ->> 'email', '')) in (
+      'pao51613@gmail.com',
+      'ploy.muennikorn@gmail.com'
+    )
+  );
+
+create policy "sub_sections_admin_delete"
+  on public.sub_sections for delete
+  to authenticated
+  using (
+    lower(coalesce(auth.jwt() ->> 'email', '')) in (
+      'pao51613@gmail.com',
+      'ploy.muennikorn@gmail.com'
+    )
+  );
+
 create table if not exists public.gallery_posts (
   id uuid primary key default gen_random_uuid(),
   media_type text not null default 'photo' check (media_type in ('photo', 'video')),
@@ -58,7 +105,8 @@ create table if not exists public.gallery_posts (
   unlock_at timestamptz not null default now(),
   sort_order int not null default 0,
   created_at timestamptz not null default now(),
-  category_id uuid references public.categories(id) on delete set null
+  category_id uuid references public.categories(id) on delete set null,
+  sub_section_id uuid references public.sub_sections(id) on delete set null
 );
 
 alter table public.gallery_posts enable row level security;

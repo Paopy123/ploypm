@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { Category } from '../types/category';
 import type { SiteContentItem } from '../types/content';
+import type { SubSection } from '../types/subSection';
+import { EpisodeSubNav } from './EpisodeSubNav';
 import { isUnlocked } from '../lib/content';
 import { CountdownUnlock } from './CountdownUnlock';
 import { HeartIcon } from './HeartIcon';
@@ -10,9 +12,18 @@ import { MediaPlayer } from './MediaPlayer';
 type EpisodeSectionProps = {
   category: Category;
   items: SiteContentItem[];
+  subSections?: SubSection[];
+  activeSubSectionId?: string | null;
+  onSubSectionChange?: (subSectionId: string) => void;
 };
 
-export function EpisodeSection({ category, items }: EpisodeSectionProps) {
+export function EpisodeSection({
+  category,
+  items,
+  subSections = [],
+  activeSubSectionId = null,
+  onSubSectionChange,
+}: EpisodeSectionProps) {
   const [visible, setVisible] = useState<Record<string, boolean>>({});
   const [lightbox, setLightbox] = useState<SiteContentItem | null>(null);
   const [, tick] = useState(0);
@@ -43,6 +54,8 @@ export function EpisodeSection({ category, items }: EpisodeSectionProps) {
     };
   }, [lightbox, closeLightbox]);
 
+  const activeSub = subSections.find((s) => s.id === activeSubSectionId) ?? null;
+
   if (items.length === 0) {
     return (
       <section
@@ -53,7 +66,15 @@ export function EpisodeSection({ category, items }: EpisodeSectionProps) {
         <h2 id={`episode-heading-${category.slug}`} className="section-heading episode-section__heading">
           {category.name}
         </h2>
-        <p className="gallery-loading">No memories in this episode yet.</p>
+        {subSections.length > 0 && onSubSectionChange && (
+          <EpisodeSubNav
+            subSections={subSections}
+            activeSubSectionId={activeSubSectionId}
+            onSelect={onSubSectionChange}
+          />
+        )}
+        {activeSub && <h3 className="episode-section__subheading">{activeSub.name}</h3>}
+        <p className="gallery-loading">No memories in this section yet.</p>
       </section>
     );
   }
@@ -70,6 +91,16 @@ export function EpisodeSection({ category, items }: EpisodeSectionProps) {
       <h2 id={`episode-heading-${category.slug}`} className="section-heading episode-section__heading">
         {category.name}
       </h2>
+
+      {subSections.length > 0 && onSubSectionChange && (
+        <EpisodeSubNav
+          subSections={subSections}
+          activeSubSectionId={activeSubSectionId}
+          onSelect={onSubSectionChange}
+        />
+      )}
+
+      {activeSub && <h3 className="episode-section__subheading">{activeSub.name}</h3>}
 
       {videos.length > 0 && (
         <ul className="episode-section__videos">

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { createCategory, deleteCategory, fetchCategories } from '../lib/categories';
 import {
@@ -8,14 +8,18 @@ import {
   fetchDbPosts,
   isUnlocked,
   updatePostCategory,
+  updatePostSubSection,
 } from '../lib/content';
 import { formatSupabaseError } from '../lib/errors';
 import { fetchLetters } from '../lib/letters';
+import { fetchSubSections, subSectionsForCategory } from '../lib/subSections';
 import { isSupabaseConfigured } from '../lib/supabase';
 import type { Category } from '../types/category';
 import type { MediaType, SiteContentItem } from '../types/content';
 import type { Letter } from '../types/letter';
+import type { SubSection } from '../types/subSection';
 import { AdminLettersPanel } from './AdminLettersPanel';
+import { AdminSubSectionsPanel } from './AdminSubSectionsPanel';
 import { HeartIcon } from './HeartIcon';
 import { MediaPlayer } from './MediaPlayer';
 
@@ -27,18 +31,20 @@ function defaultUnlockLocal(): string {
   return d.toISOString().slice(0, 16);
 }
 
-type AdminTab = 'upload' | 'letters' | 'episodes' | 'posts';
+type AdminTab = 'upload' | 'letters' | 'episodes' | 'subsections' | 'posts';
 
 export function AdminDashboard() {
   const { email, signOut } = useAuth();
   const [tab, setTab] = useState<AdminTab>('upload');
   const [categories, setCategories] = useState<Category[]>([]);
+  const [subSections, setSubSections] = useState<SubSection[]>([]);
   const [posts, setPosts] = useState<SiteContentItem[]>([]);
   const [letters, setLetters] = useState<Letter[]>([]);
   const [loading, setLoading] = useState(true);
   const [mediaType, setMediaType] = useState<MediaType>('photo');
   const [photoMode, setPhotoMode] = useState<'file' | 'link'>('file');
   const [categoryId, setCategoryId] = useState('');
+  const [subSectionId, setSubSectionId] = useState('');
   const [description, setDescription] = useState('');
   const [unlockLocal, setUnlockLocal] = useState(defaultUnlockLocal);
   const [file, setFile] = useState<File | null>(null);
@@ -53,11 +59,22 @@ export function AdminDashboard() {
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [cats, allPosts, allLetters] = await Promise.all([fetchCategories(), fetchDbPosts(), fetchLetters()]);
+      const [cats, subs, allPosts, allLetters] = await Promise.all([
+        fetchCategories(),
+        fetchSubSections(),
+        fetchDbPosts(),
+        fetchLetters(),
+      ]);
       setCategories(cats);
+      setSubSections(subs);
       setPosts(allPosts);
       setLetters(allLetters);
-      setCategoryId((prev) => prev || cats[0]?.id || '');
+      setCategoryId((prev) => {
+        const nextCategory = prev || cats[0]?.id || '';
+        const subsForCat = subSectionsForCategory(subs, nextCategory);
+        setSubSectionId((s) => s || subsForCat[0]?.id || '');
+        return nextCategory;
+      });
     } finally {
       setLoading(false);
     }
@@ -66,6 +83,16 @@ export function AdminDashboard() {
   useEffect(() => {
     void loadAll();
   }, [loadAll]);
+
+  const uploadSubSections = useMemo(
+    () => subSectionsForCategory(subSections, categoryId),
+    [subSections, categoryId],
+  );
+
+  useEffect(() => {
+    const subs = subSectionsForCategory(subSections, categoryId);
+    setSubSectionId(subs[0]?.id ?? '');
+  }, [categoryId, subSections]);
 
   const onFileChange = (picked: File | null) => {
     if (preview) URL.revokeObjectURL(preview);
@@ -89,6 +116,10 @@ export function AdminDashboard() {
     }
     if (!categoryId) {
       setError('Choose an episode category, or create one in the Episodes tab.');
+      return;
+    }
+    if (uploadSubSections.length > 0 && !subSectionId) {
+      setError('Choose a sub-memory section, or create one in the Sub-memories tab.');
       return;
     }
 
@@ -117,7 +148,14 @@ export function AdminDashboard() {
     try {
       if (mediaType === 'photo') {
         if (photoMode === 'file' && file) {
-          await createPhotoPost({ file, description, unlockAt, uploadedByEmail: email, categoryId });
+          await createPhotoPost({
+            file,
+            description,
+            unlockAt,
+            uploadedByEmail: email,
+            categoryId,
+            subSectionId: subSectionId || null,
+          });
         } else {
           await createFromDriveLink({
             driveShareLink: driveLink,
@@ -126,6 +164,7 @@ export function AdminDashboard() {
             unlockAt,
             uploadedByEmail: email,
             categoryId,
+            subSectionId: subSectionId || null,
           });
         }
       } else {
@@ -136,6 +175,7 @@ export function AdminDashboard() {
           unlockAt,
           uploadedByEmail: email,
           categoryId,
+          subSectionId: subSectionId || null,
         });
       }
 
@@ -189,6 +229,20 @@ export function AdminDashboard() {
     try {
       await deleteCategory(cat.id);
       setMessage(`Removed episode “${cat.name}”.`);
+      await loadAll();
+    } catch (err) {
+      setError(formatSupabaseError(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleSubSectionChange = async (post: SiteContentItem, newSubSectionId: string) => {
+    setBusy(true);
+    setError('');
+    try {
+      await updatePostSubSection(post.id, newSubSectionId || null);
+      setMessage('Section updated for this upload.');
       await loadAll();
     } catch (err) {
       setError(formatSupabaseError(err));
@@ -279,6 +333,15 @@ export function AdminDashboard() {
           <button
             type="button"
             role="tab"
+            aria-selected={tab === 'subsections'}
+            className={`admin-tab${tab === 'subsections' ? ' admin-tab--active' : ''}`}
+            onClick={() => setTab('subsections')}
+          >
+            Sub-memories
+          </button>
+          <button
+            type="button"
+            role="tab"
             aria-selected={tab === 'posts'}
             className={`admin-tab${tab === 'posts' ? ' admin-tab--active' : ''}`}
             onClick={() => setTab('posts')}
@@ -306,16 +369,35 @@ export function AdminDashboard() {
                 item on the site.
               </p>
             ) : (
-              <label className="admin-field">
-                <span>Episode category</span>
-                <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} required>
-                  {categories.map((cat) => (
-                    <option key={cat.id} value={cat.id}>
-                      {cat.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <>
+                <label className="admin-field">
+                  <span>Episode</span>
+                  <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} required>
+                    {categories.map((cat) => (
+                      <option key={cat.id} value={cat.id}>
+                        {cat.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                {uploadSubSections.length > 0 ? (
+                  <label className="admin-field">
+                    <span>Sub-memory section</span>
+                    <select value={subSectionId} onChange={(e) => setSubSectionId(e.target.value)} required>
+                      {uploadSubSections.map((sub) => (
+                        <option key={sub.id} value={sub.id}>
+                          {sub.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : (
+                  <p className="admin-field__hint">
+                    No sections in this episode yet. Add one in the <strong>Sub-memories</strong> tab (e.g. Our memories).
+                  </p>
+                )}
+              </>
             )}
 
             <div className="admin-type-toggle" role="group" aria-label="Media type">
@@ -437,7 +519,11 @@ export function AdminDashboard() {
               <small className="admin-field__hint">Future time = countdown on the site until it unlocks.</small>
             </label>
 
-            <button type="submit" className="admin-btn admin-btn--primary" disabled={busy || categories.length === 0}>
+            <button
+              type="submit"
+              className="admin-btn admin-btn--primary"
+              disabled={busy || categories.length === 0 || (uploadSubSections.length > 0 && !subSectionId)}
+            >
               {busy ? 'Saving…' : 'Publish'}
             </button>
           </form>
@@ -495,6 +581,18 @@ export function AdminDashboard() {
           </section>
         )}
 
+        {tab === 'subsections' && (
+          <AdminSubSectionsPanel
+            categories={categories}
+            subSections={subSections}
+            busy={busy}
+            setBusy={setBusy}
+            setError={setError}
+            setMessage={setMessage}
+            onChanged={loadAll}
+          />
+        )}
+
         {tab === 'letters' && email && (
           <AdminLettersPanel
             letters={letters}
@@ -532,6 +630,7 @@ export function AdminDashboard() {
                         {post.mediaType}
                         {post.mediaSource === 'drive' ? ' · Drive' : ''}
                         {post.categoryName ? ` · ${post.categoryName}` : ''}
+                        {post.subSectionName ? ` · ${post.subSectionName}` : ''}
                       </span>
                       <p className="admin-post__text">{post.description}</p>
                       <p className="admin-post__meta">{post.uploadedByLabel}</p>
@@ -553,6 +652,23 @@ export function AdminDashboard() {
                           ))}
                         </select>
                       </label>
+                      {post.categoryId && subSectionsForCategory(subSections, post.categoryId).length > 0 && (
+                        <label className="admin-field admin-field--inline">
+                          <span>Section</span>
+                          <select
+                            value={post.subSectionId ?? ''}
+                            onChange={(e) => void handleSubSectionChange(post, e.target.value)}
+                            disabled={busy}
+                          >
+                            <option value="">No section</option>
+                            {subSectionsForCategory(subSections, post.categoryId).map((sub) => (
+                              <option key={sub.id} value={sub.id}>
+                                {sub.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      )}
                     </div>
                     <button type="button" className="admin-btn admin-btn--danger" onClick={() => void handleDeletePost(post)} disabled={busy}>
                       Remove

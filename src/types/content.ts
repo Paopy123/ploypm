@@ -15,6 +15,7 @@ export type ContentPostRow = {
   created_at: string;
   sort_order: number;
   category_id?: string | null;
+  sub_section_id?: string | null;
 };
 
 export type SiteContentItem = {
@@ -33,4 +34,7 @@ export type SiteContentItem = {
   categoryId: string | null;
   categoryName: string | null;
   categorySlug: string | null;
+  subSectionId: string | null;
+  subSectionName: string | null;
+  subSectionSlug: string | null;
 };
