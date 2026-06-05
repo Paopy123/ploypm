@@ -1,4 +1,5 @@
 import { formatSupabaseError } from './errors';
+import { isUnlockedAt } from './unlock';
 import { driveEmbedUrl, isDriveUrl, parseDriveShareLink } from './googleDrive';
 import { getUploaderCredit, getUploaderName } from './uploader';
 import type { ContentPostRow, MediaSource, MediaType, SiteContentItem } from '../types/content';
@@ -8,8 +9,10 @@ import { GALLERY_BUCKET, GALLERY_TABLE, isSupabaseConfigured, supabase } from '.
 export const WHATS_NEW_COUNT = 5;
 const MAX_PHOTO_BYTES = 15 * 1024 * 1024;
 
-const SELECT_FULL =
-  'id, media_type, media_source, media_url, image_url, poster_url, drive_file_id, description, uploaded_by_email, unlock_at, created_at, sort_order, category_id, categories(id, name, slug)';
+const SELECT_BASIC =
+  'id, media_type, media_source, media_url, image_url, poster_url, drive_file_id, description, uploaded_by_email, unlock_at, created_at, sort_order, category_id';
+
+const SELECT_FULL = `${SELECT_BASIC}, categories(id, name, slug)`;
 
 type RowWithCategory = ContentPostRow & {
   categories?: { id: string; name: string; slug: string } | { id: string; name: string; slug: string }[] | null;
@@ -88,17 +91,29 @@ async function insertRow(row: Record<string, unknown>): Promise<void> {
 async function fetchAllPosts(): Promise<SiteContentItem[]> {
   if (!supabase) return [];
 
-  const { data, error } = await supabase
+  const full = await supabase
     .from(GALLERY_TABLE)
     .select(SELECT_FULL)
     .order('created_at', { ascending: false });
 
-  if (error) {
-    console.warn('Content fetch:', error.message);
-    return [];
+  let rows: RowWithCategory[];
+
+  if (full.error) {
+    console.warn('Content fetch (with categories):', full.error.message);
+    const basic = await supabase
+      .from(GALLERY_TABLE)
+      .select(SELECT_BASIC)
+      .order('created_at', { ascending: false });
+    if (basic.error) {
+      console.warn('Content fetch:', basic.error.message);
+      return [];
+    }
+    rows = (basic.data ?? []) as RowWithCategory[];
+  } else {
+    rows = (full.data ?? []) as RowWithCategory[];
   }
 
-  return ((data ?? []) as RowWithCategory[]).map(toContentItem).filter((item) => item.src);
+  return rows.map(toContentItem).filter((item) => item.src);
 }
 
 export async function fetchDbPosts(): Promise<SiteContentItem[]> {
@@ -118,7 +133,7 @@ export async function fetchPostsByCategory(categoryId: string): Promise<SiteCont
 }
 
 export function isUnlocked(item: SiteContentItem, now = Date.now()): boolean {
-  return new Date(item.unlockAt).getTime() <= now;
+  return isUnlockedAt(item.unlockAt, now);
 }
 
 export async function createPhotoPost(params: {
@@ -223,6 +238,19 @@ export async function createFromDriveLink(params: {
     uploadedByEmail: params.uploadedByEmail,
     categoryId: params.categoryId,
   });
+}
+
+export async function updatePostCategory(postId: string, categoryId: string | null): Promise<void> {
+  if (!supabase) throw new Error('Supabase is not configured.');
+
+  await requireAuthSession();
+
+  const { error } = await supabase
+    .from(GALLERY_TABLE)
+    .update({ category_id: categoryId })
+    .eq('id', postId);
+
+  if (error) throw new Error(formatSupabaseError(error));
 }
 
 export async function deleteContentPost(item: SiteContentItem): Promise<void> {

@@ -26,7 +26,7 @@ export function SiteNav({ categories }: SiteNavProps) {
         ))}
         <li>
           <a href="#letter" className="site-nav__link">
-            Letter
+            Letters
           </a>
         </li>
         {!loading && (

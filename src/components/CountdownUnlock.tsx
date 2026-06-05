@@ -1,9 +1,13 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { isUnlocked } from '../lib/content';
+import { isUnlockedAt } from '../lib/unlock';
 import type { SiteContentItem } from '../types/content';
 
 type CountdownUnlockProps = {
-  item: SiteContentItem;
+  /** @deprecated Prefer unlockAt/teaser/byline for letters */
+  item?: SiteContentItem;
+  unlockAt?: string;
+  teaser?: string;
+  byline?: string | null;
   children: ReactNode;
   compact?: boolean;
 };
@@ -22,20 +26,31 @@ function getRemaining(unlockAt: string, now: number) {
   return { days, hours, minutes, seconds, totalSec };
 }
 
-export function CountdownUnlock({ item, children, compact = false }: CountdownUnlockProps) {
+export function CountdownUnlock({
+  item,
+  unlockAt: unlockAtProp,
+  teaser: teaserProp,
+  byline: bylineProp,
+  children,
+  compact = false,
+}: CountdownUnlockProps) {
+  const unlockAt = unlockAtProp ?? item?.unlockAt ?? new Date(0).toISOString();
+  const teaser = teaserProp ?? item?.description;
+  const byline = bylineProp ?? item?.uploadedByLabel;
+
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
-    if (isUnlocked(item, now)) return;
+    if (isUnlockedAt(unlockAt, now)) return;
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
-  }, [item, now]);
+  }, [unlockAt, now]);
 
-  if (isUnlocked(item, now)) {
+  if (isUnlockedAt(unlockAt, now)) {
     return <>{children}</>;
   }
 
-  const { days, hours, minutes, seconds } = getRemaining(item.unlockAt, now);
+  const { days, hours, minutes, seconds } = getRemaining(unlockAt, now);
 
   return (
     <div className={`countdown${compact ? ' countdown--compact' : ''}`}>
@@ -60,8 +75,8 @@ export function CountdownUnlock({ item, children, compact = false }: CountdownUn
           <small>sec</small>
         </span>
       </div>
-      {item.description && <p className="countdown__teaser">{item.description}</p>}
-      {item.uploadedByLabel && <p className="countdown__by">{item.uploadedByLabel}</p>}
+      {teaser && <p className="countdown__teaser">{teaser}</p>}
+      {byline && <p className="countdown__by">{byline}</p>}
     </div>
   );
 }

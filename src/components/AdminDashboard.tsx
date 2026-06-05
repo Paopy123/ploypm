@@ -7,11 +7,15 @@ import {
   deleteContentPost,
   fetchDbPosts,
   isUnlocked,
+  updatePostCategory,
 } from '../lib/content';
 import { formatSupabaseError } from '../lib/errors';
+import { fetchLetters } from '../lib/letters';
 import { isSupabaseConfigured } from '../lib/supabase';
 import type { Category } from '../types/category';
 import type { MediaType, SiteContentItem } from '../types/content';
+import type { Letter } from '../types/letter';
+import { AdminLettersPanel } from './AdminLettersPanel';
 import { HeartIcon } from './HeartIcon';
 import { MediaPlayer } from './MediaPlayer';
 
@@ -23,13 +27,14 @@ function defaultUnlockLocal(): string {
   return d.toISOString().slice(0, 16);
 }
 
-type AdminTab = 'upload' | 'episodes' | 'posts';
+type AdminTab = 'upload' | 'letters' | 'episodes' | 'posts';
 
 export function AdminDashboard() {
   const { email, signOut } = useAuth();
   const [tab, setTab] = useState<AdminTab>('upload');
   const [categories, setCategories] = useState<Category[]>([]);
   const [posts, setPosts] = useState<SiteContentItem[]>([]);
+  const [letters, setLetters] = useState<Letter[]>([]);
   const [loading, setLoading] = useState(true);
   const [mediaType, setMediaType] = useState<MediaType>('photo');
   const [photoMode, setPhotoMode] = useState<'file' | 'link'>('file');
@@ -48,9 +53,10 @@ export function AdminDashboard() {
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [cats, allPosts] = await Promise.all([fetchCategories(), fetchDbPosts()]);
+      const [cats, allPosts, allLetters] = await Promise.all([fetchCategories(), fetchDbPosts(), fetchLetters()]);
       setCategories(cats);
       setPosts(allPosts);
+      setLetters(allLetters);
       setCategoryId((prev) => prev || cats[0]?.id || '');
     } finally {
       setLoading(false);
@@ -191,6 +197,20 @@ export function AdminDashboard() {
     }
   };
 
+  const handleCategoryChange = async (post: SiteContentItem, newCategoryId: string) => {
+    setBusy(true);
+    setError('');
+    try {
+      await updatePostCategory(post.id, newCategoryId || null);
+      setMessage('Episode updated for this upload.');
+      await loadAll();
+    } catch (err) {
+      setError(formatSupabaseError(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleDeletePost = async (post: SiteContentItem) => {
     if (!window.confirm('Remove this from the site?')) return;
     setBusy(true);
@@ -237,6 +257,15 @@ export function AdminDashboard() {
             onClick={() => setTab('upload')}
           >
             Add content
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'letters'}
+            className={`admin-tab${tab === 'letters' ? ' admin-tab--active' : ''}`}
+            onClick={() => setTab('letters')}
+          >
+            Letters
           </button>
           <button
             type="button"
@@ -466,6 +495,18 @@ export function AdminDashboard() {
           </section>
         )}
 
+        {tab === 'letters' && email && (
+          <AdminLettersPanel
+            letters={letters}
+            email={email}
+            busy={busy}
+            setBusy={setBusy}
+            setError={setError}
+            setMessage={setMessage}
+            onChanged={loadAll}
+          />
+        )}
+
         {tab === 'posts' && (
           <section className="admin-list" aria-labelledby="admin-posts-heading">
             <h2 id="admin-posts-heading" className="admin-list__title">
@@ -497,6 +538,21 @@ export function AdminDashboard() {
                       <p className="admin-post__meta">
                         {isUnlocked(post) ? 'Unlocked' : `Unlocks ${new Date(post.unlockAt).toLocaleString()}`}
                       </p>
+                      <label className="admin-field admin-field--inline">
+                        <span>Episode</span>
+                        <select
+                          value={post.categoryId ?? ''}
+                          onChange={(e) => void handleCategoryChange(post, e.target.value)}
+                          disabled={busy}
+                        >
+                          <option value="">Our memories (no episode)</option>
+                          {categories.map((cat) => (
+                            <option key={cat.id} value={cat.id}>
+                              {cat.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
                     </div>
                     <button type="button" className="admin-btn admin-btn--danger" onClick={() => void handleDeletePost(post)} disabled={busy}>
                       Remove
