@@ -6,7 +6,7 @@ export function Letter() {
   const [open, setOpen] = useState(false);
 
   return (
-    <section className="section letter-section" aria-labelledby="letter-heading">
+    <section id="letter" className="section letter-section" aria-labelledby="letter-heading">
       <h2 id="letter-heading" className="sr-only">
         Love letter
       </h2>

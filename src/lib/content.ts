@@ -1,29 +1,40 @@
-import { PHOTOS } from '../content';
 import { formatSupabaseError } from './errors';
 import { driveEmbedUrl, isDriveUrl, parseDriveShareLink } from './googleDrive';
 import { getUploaderCredit, getUploaderName } from './uploader';
 import type { ContentPostRow, MediaSource, MediaType, SiteContentItem } from '../types/content';
 import { GALLERY_BUCKET, GALLERY_TABLE, isSupabaseConfigured, supabase } from './supabase';
 
-const WHATS_NEW_DAYS = 14;
+/** How many newest posts appear in What's New */
+export const WHATS_NEW_COUNT = 5;
 const MAX_PHOTO_BYTES = 15 * 1024 * 1024;
+
+const SELECT_FULL =
+  'id, media_type, media_source, media_url, image_url, poster_url, drive_file_id, description, uploaded_by_email, unlock_at, created_at, sort_order, category_id, categories(id, name, slug)';
+
+type RowWithCategory = ContentPostRow & {
+  categories?: { id: string; name: string; slug: string } | { id: string; name: string; slug: string }[] | null;
+};
 
 function rowMediaUrl(row: ContentPostRow): string {
   return row.media_url ?? row.image_url ?? '';
 }
 
 function resolveMediaSource(row: ContentPostRow, url: string): MediaSource {
-  if (row.media_source === 'drive' || row.media_source === 'supabase') {
-    return row.media_source;
-  }
+  if (row.media_source === 'drive' || row.media_source === 'supabase') return row.media_source;
   if (row.drive_file_id || isDriveUrl(url)) return 'drive';
   return 'supabase';
 }
 
-function toContentItem(row: ContentPostRow): SiteContentItem {
-  const createdAt = row.created_at;
-  const ageMs = Date.now() - new Date(createdAt).getTime();
-  const isNew = ageMs < WHATS_NEW_DAYS * 24 * 60 * 60 * 1000;
+function categoryFromRow(row: RowWithCategory) {
+  const cat = Array.isArray(row.categories) ? row.categories[0] : row.categories;
+  return {
+    categoryId: row.category_id ?? cat?.id ?? null,
+    categoryName: cat?.name ?? null,
+    categorySlug: cat?.slug ?? null,
+  };
+}
+
+function toContentItem(row: RowWithCategory): SiteContentItem {
   const rawUrl = rowMediaUrl(row);
   const mediaSource = resolveMediaSource(row, rawUrl);
   const driveFileId = row.drive_file_id ?? undefined;
@@ -34,6 +45,8 @@ function toContentItem(row: ContentPostRow): SiteContentItem {
         ? `https://drive.google.com/thumbnail?id=${driveFileId}&sz=w1600`
         : driveEmbedUrl(driveFileId);
   }
+
+  const cat = categoryFromRow(row);
 
   return {
     id: row.id,
@@ -46,32 +59,13 @@ function toContentItem(row: ContentPostRow): SiteContentItem {
     uploadedByEmail: row.uploaded_by_email,
     uploadedByLabel: getUploaderCredit(row.uploaded_by_email),
     unlockAt: row.unlock_at ?? new Date(0).toISOString(),
-    createdAt,
+    createdAt: row.created_at,
     isStatic: false,
-    isNew,
+    categoryId: cat.categoryId,
+    categoryName: cat.categoryName,
+    categorySlug: cat.categorySlug,
   };
 }
-
-function staticPhotoItems(): SiteContentItem[] {
-  return PHOTOS.map((photo, index) => ({
-    id: `static-${index}`,
-    mediaType: 'photo' as const,
-    mediaSource: 'supabase' as const,
-    src: photo.src,
-    description: photo.alt,
-    uploadedByEmail: null,
-    uploadedByLabel: null,
-    unlockAt: new Date(0).toISOString(),
-    createdAt: new Date(0).toISOString(),
-    isStatic: true,
-    isNew: false,
-  }));
-}
-
-const SELECT_FULL =
-  'id, media_type, media_source, media_url, image_url, poster_url, drive_file_id, description, uploaded_by_email, unlock_at, created_at, sort_order';
-
-const SELECT_LEGACY = 'id, image_url, description, sort_order, created_at';
 
 async function requireAuthSession() {
   if (!supabase) throw new Error('Supabase is not configured.');
@@ -87,106 +81,78 @@ async function requireAuthSession() {
 async function insertRow(row: Record<string, unknown>): Promise<void> {
   if (!supabase) throw new Error('Supabase is not configured.');
 
-  let { error } = await supabase.from(GALLERY_TABLE).insert(row);
-
-  if (error?.message?.includes('does not exist')) {
-    const { media_type, media_source, drive_file_id, unlock_at, uploaded_by_email, ...rest } = row;
-    void media_type;
-    void media_source;
-    void drive_file_id;
-    void unlock_at;
-    void uploaded_by_email;
-    ({ error } = await supabase.from(GALLERY_TABLE).insert(rest));
-  }
-
+  const { error } = await supabase.from(GALLERY_TABLE).insert(row);
   if (error) throw new Error(formatSupabaseError(error));
 }
 
-export async function fetchDbPosts(): Promise<SiteContentItem[]> {
+async function fetchAllPosts(): Promise<SiteContentItem[]> {
   if (!supabase) return [];
 
-  let { data, error } = await supabase
+  const { data, error } = await supabase
     .from(GALLERY_TABLE)
     .select(SELECT_FULL)
     .order('created_at', { ascending: false });
-
-  if (error?.message?.includes('does not exist')) {
-    const legacy = await supabase
-      .from(GALLERY_TABLE)
-      .select(SELECT_LEGACY)
-      .order('created_at', { ascending: false });
-    data = legacy.data as typeof data;
-    error = legacy.error;
-  }
 
   if (error) {
     console.warn('Content fetch:', error.message);
     return [];
   }
 
-  return ((data ?? []) as ContentPostRow[])
-    .map((row) =>
-      toContentItem({
-        ...row,
-        media_type: row.media_type ?? 'photo',
-        media_url: row.media_url ?? row.image_url,
-        unlock_at: row.unlock_at ?? row.created_at,
-      }),
-    )
-    .filter((item) => item.src);
+  return ((data ?? []) as RowWithCategory[]).map(toContentItem).filter((item) => item.src);
 }
 
-export async function fetchPhotoItems(): Promise<SiteContentItem[]> {
-  const dbPhotos = (await fetchDbPosts()).filter((p) => p.mediaType === 'photo');
-  return [...dbPhotos, ...staticPhotoItems()];
+export async function fetchDbPosts(): Promise<SiteContentItem[]> {
+  return fetchAllPosts();
 }
 
-export async function fetchVideoItems(): Promise<SiteContentItem[]> {
-  return (await fetchDbPosts()).filter((p) => p.mediaType === 'video');
+/** Newest uploads — shown at the top of the site */
+export async function fetchWhatsNewPosts(): Promise<SiteContentItem[]> {
+  const all = await fetchAllPosts();
+  return all.slice(0, WHATS_NEW_COUNT);
+}
+
+/** Everything in an episode category (not limited to What's New count) */
+export async function fetchPostsByCategory(categoryId: string): Promise<SiteContentItem[]> {
+  const all = await fetchAllPosts();
+  return all.filter((p) => p.categoryId === categoryId);
 }
 
 export function isUnlocked(item: SiteContentItem, now = Date.now()): boolean {
   return new Date(item.unlockAt).getTime() <= now;
 }
 
-/** Photos only — stored in Supabase (keep under ~15MB) */
 export async function createPhotoPost(params: {
   file: File;
   description: string;
   unlockAt: Date;
   uploadedByEmail: string;
+  categoryId: string;
 }): Promise<void> {
   if (!isSupabaseConfigured || !supabase) {
-    throw new Error(
-      'Supabase is not connected. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to Netlify, then redeploy.',
-    );
+    throw new Error('Supabase is not connected.');
   }
 
   await requireAuthSession();
 
-  const { file, description, unlockAt, uploadedByEmail } = params;
+  const { file, description, unlockAt, uploadedByEmail, categoryId } = params;
 
   if (file.size > MAX_PHOTO_BYTES) {
-    throw new Error('Photo is too large. Use an image under 15MB, or compress it first.');
+    throw new Error('Photo is too large. Use an image under 15MB, or paste a Google Drive link instead.');
   }
 
   const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
   const path = `photos/${crypto.randomUUID()}.${ext}`;
-  const contentType = file.type || 'image/jpeg';
 
   const { error: uploadError } = await supabase.storage.from(GALLERY_BUCKET).upload(path, file, {
     cacheControl: '3600',
     upsert: false,
-    contentType,
+    contentType: file.type || 'image/jpeg',
   });
 
-  if (uploadError) {
-    throw new Error(formatSupabaseError(uploadError));
-  }
+  if (uploadError) throw new Error(formatSupabaseError(uploadError));
 
   const { data: urlData } = supabase.storage.from(GALLERY_BUCKET).getPublicUrl(path);
   const publicUrl = urlData.publicUrl;
-  const email = uploadedByEmail.trim().toLowerCase();
 
   try {
     await insertRow({
@@ -195,8 +161,9 @@ export async function createPhotoPost(params: {
       media_url: publicUrl,
       image_url: publicUrl,
       description: description.trim(),
-      uploaded_by_email: email,
+      uploaded_by_email: uploadedByEmail.trim().toLowerCase(),
       unlock_at: unlockAt.toISOString(),
+      category_id: categoryId,
     });
   } catch (e) {
     await supabase.storage.from(GALLERY_BUCKET).remove([path]);
@@ -204,17 +171,15 @@ export async function createPhotoPost(params: {
   }
 }
 
-/** Save a Drive file (auto-upload or pasted link) to the site database */
 export async function createDriveMediaPost(params: {
   fileId: string;
   mediaType: MediaType;
   description: string;
   unlockAt: Date;
   uploadedByEmail: string;
+  categoryId: string;
 }): Promise<void> {
-  if (!isSupabaseConfigured || !supabase) {
-    throw new Error('Supabase is not connected.');
-  }
+  if (!isSupabaseConfigured || !supabase) throw new Error('Supabase is not connected.');
 
   await requireAuthSession();
 
@@ -225,34 +190,38 @@ export async function createDriveMediaPost(params: {
     media_type: params.mediaType,
     media_source: 'drive',
     media_url: embedUrl,
-    image_url: params.mediaType === 'photo' ? `https://drive.google.com/thumbnail?id=${params.fileId}&sz=w1600` : embedUrl,
+    image_url:
+      params.mediaType === 'photo'
+        ? `https://drive.google.com/thumbnail?id=${params.fileId}&sz=w1600`
+        : embedUrl,
     drive_file_id: params.fileId,
     description: params.description.trim(),
     uploaded_by_email: email,
     unlock_at: params.unlockAt.toISOString(),
+    category_id: params.categoryId,
   });
 }
 
-/** Videos — paste a share link (manual upload to Drive) */
-export async function createVideoFromDriveLink(params: {
+export async function createFromDriveLink(params: {
   driveShareLink: string;
+  mediaType: MediaType;
   description: string;
   unlockAt: Date;
   uploadedByEmail: string;
+  categoryId: string;
 }): Promise<void> {
   const parsed = parseDriveShareLink(params.driveShareLink);
   if (!parsed) {
-    throw new Error(
-      'Invalid Google Drive link. Set sharing to “Anyone with the link”, then paste the URL.',
-    );
+    throw new Error('Invalid Google Drive link. Set sharing to “Anyone with the link”, then paste the URL.');
   }
 
   await createDriveMediaPost({
     fileId: parsed.fileId,
-    mediaType: 'video',
+    mediaType: params.mediaType,
     description: params.description,
     unlockAt: params.unlockAt,
     uploadedByEmail: params.uploadedByEmail,
+    categoryId: params.categoryId,
   });
 }
 

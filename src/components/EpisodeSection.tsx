@@ -1,32 +1,28 @@
 import { useCallback, useEffect, useState } from 'react';
-import { fetchPhotoItems, isUnlocked } from '../lib/content';
+import type { Category } from '../types/category';
 import type { SiteContentItem } from '../types/content';
+import { isUnlocked } from '../lib/content';
 import { CountdownUnlock } from './CountdownUnlock';
 import { HeartIcon } from './HeartIcon';
 import { MediaMeta } from './MediaMeta';
+import { MediaPlayer } from './MediaPlayer';
 
-export function Gallery() {
-  const [items, setItems] = useState<SiteContentItem[]>([]);
+type EpisodeSectionProps = {
+  category: Category;
+  items: SiteContentItem[];
+};
+
+export function EpisodeSection({ category, items }: EpisodeSectionProps) {
   const [visible, setVisible] = useState<Record<string, boolean>>({});
   const [lightbox, setLightbox] = useState<SiteContentItem | null>(null);
-  const [loading, setLoading] = useState(true);
   const [, tick] = useState(0);
 
   useEffect(() => {
-    let cancelled = false;
-    fetchPhotoItems().then((data) => {
-      if (cancelled) return;
-      setItems(data);
-      setVisible(Object.fromEntries(data.map((item) => [item.id, true])));
-      setLoading(false);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    setVisible(Object.fromEntries(items.map((item) => [item.id, true])));
+  }, [items]);
 
   useEffect(() => {
-    const hasLocked = items.some((i) => !i.isStatic && !isUnlocked(i));
+    const hasLocked = items.some((i) => !isUnlocked(i));
     if (!hasLocked) return;
     const id = window.setInterval(() => tick((n) => n + 1), 1000);
     return () => window.clearInterval(id);
@@ -47,25 +43,40 @@ export function Gallery() {
     };
   }, [lightbox, closeLightbox]);
 
-  const handleError = (id: string) => {
-    setVisible((prev) => ({ ...prev, [id]: false }));
-  };
+  if (items.length === 0) return null;
 
-  const shown = items.filter((item) => visible[item.id] !== false);
-  if (!loading && shown.length === 0) return null;
+  const photos = items.filter((i) => i.mediaType === 'photo' && visible[i.id] !== false);
+  const videos = items.filter((i) => i.mediaType === 'video');
 
   return (
-    <section className="section section--wide" aria-labelledby="gallery-heading">
-      <h2 id="gallery-heading" className="section-heading">
-        Our memories
+    <section
+      id={`episode-${category.slug}`}
+      className="section section--wide episode-section"
+      aria-labelledby={`episode-heading-${category.slug}`}
+    >
+      <h2 id={`episode-heading-${category.slug}`} className="section-heading episode-section__heading">
+        {category.name}
       </h2>
 
-      {loading ? (
-        <p className="gallery-loading">Loading memories…</p>
-      ) : (
-        <div className="gallery">
+      {videos.length > 0 && (
+        <ul className="episode-section__videos">
+          {videos.map((item) => (
+            <li key={item.id} className="episode-section__video-item">
+              <CountdownUnlock item={item}>
+                <div className="video-wrap">
+                  <MediaPlayer item={item} />
+                </div>
+                <MediaMeta description={item.description} uploadedByLabel={item.uploadedByLabel} />
+              </CountdownUnlock>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {photos.length > 0 && (
+        <div className="gallery episode-section__gallery">
           {items.map((item, index) =>
-            visible[item.id] !== false ? (
+            item.mediaType === 'photo' && visible[item.id] !== false ? (
               <div key={item.id} className="gallery__cell">
                 <CountdownUnlock item={item} compact>
                   <button
@@ -79,18 +90,14 @@ export function Gallery() {
                       src={item.src}
                       alt={item.description || 'Memory'}
                       loading="lazy"
-                      onError={() => handleError(item.id)}
+                      onError={() => setVisible((prev) => ({ ...prev, [item.id]: false }))}
                     />
                     <span className="gallery__overlay">
                       <HeartIcon pulse size={28} />
-                      {item.description ? (
-                        <span className="gallery__caption">{item.description}</span>
-                      ) : null}
+                      {item.description ? <span className="gallery__caption">{item.description}</span> : null}
                     </span>
                   </button>
-                  {!item.isStatic && item.uploadedByLabel && (
-                    <p className="gallery__uploader">{item.uploadedByLabel}</p>
-                  )}
+                  {item.uploadedByLabel && <p className="gallery__uploader">{item.uploadedByLabel}</p>}
                 </CountdownUnlock>
               </div>
             ) : null,

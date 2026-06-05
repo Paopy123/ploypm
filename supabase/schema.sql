@@ -1,5 +1,50 @@
 -- Run this in Supabase: SQL Editor → New query → Run
 
+create table if not exists public.categories (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  slug text not null unique,
+  sort_order int not null default 0,
+  created_at timestamptz not null default now()
+);
+
+alter table public.categories enable row level security;
+
+create policy "categories_public_read"
+  on public.categories for select
+  to anon, authenticated
+  using (true);
+
+create policy "categories_admin_insert"
+  on public.categories for insert
+  to authenticated
+  with check (
+    lower(coalesce(auth.jwt() ->> 'email', '')) in (
+      'pao51613@gmail.com',
+      'ploy.muennikorn@gmail.com'
+    )
+  );
+
+create policy "categories_admin_update"
+  on public.categories for update
+  to authenticated
+  using (
+    lower(coalesce(auth.jwt() ->> 'email', '')) in (
+      'pao51613@gmail.com',
+      'ploy.muennikorn@gmail.com'
+    )
+  );
+
+create policy "categories_admin_delete"
+  on public.categories for delete
+  to authenticated
+  using (
+    lower(coalesce(auth.jwt() ->> 'email', '')) in (
+      'pao51613@gmail.com',
+      'ploy.muennikorn@gmail.com'
+    )
+  );
+
 create table if not exists public.gallery_posts (
   id uuid primary key default gen_random_uuid(),
   media_type text not null default 'photo' check (media_type in ('photo', 'video')),
@@ -12,7 +57,8 @@ create table if not exists public.gallery_posts (
   uploaded_by_email text,
   unlock_at timestamptz not null default now(),
   sort_order int not null default 0,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  category_id uuid references public.categories(id) on delete set null
 );
 
 alter table public.gallery_posts enable row level security;

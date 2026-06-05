@@ -1,28 +1,18 @@
 import { useEffect, useState } from 'react';
-import { fetchDbPosts, isUnlocked } from '../lib/content';
+import { isUnlocked } from '../lib/content';
 import type { SiteContentItem } from '../types/content';
 import { CountdownUnlock } from './CountdownUnlock';
 import { HeartIcon } from './HeartIcon';
 import { MediaMeta } from './MediaMeta';
 import { MediaPlayer } from './MediaPlayer';
 
-export function WhatsNew() {
-  const [items, setItems] = useState<SiteContentItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [, tick] = useState(0);
+type WhatsNewProps = {
+  items: SiteContentItem[];
+  loading?: boolean;
+};
 
-  useEffect(() => {
-    let cancelled = false;
-    fetchDbPosts().then((all) => {
-      if (cancelled) return;
-      const fresh = all.filter((p) => p.isNew || new Date(p.unlockAt).getTime() > Date.now());
-      setItems(fresh);
-      setLoading(false);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+export function WhatsNew({ items, loading = false }: WhatsNewProps) {
+  const [, tick] = useState(0);
 
   useEffect(() => {
     const hasLocked = items.some((i) => !isUnlocked(i));
@@ -34,10 +24,11 @@ export function WhatsNew() {
   if (!loading && items.length === 0) return null;
 
   return (
-    <section className="section section--wide whats-new" aria-labelledby="whats-new-heading">
+    <section id="whats-new" className="section section--wide whats-new" aria-labelledby="whats-new-heading">
       <h2 id="whats-new-heading" className="whats-new__heading">
         <HeartIcon pulse size={22} /> What&apos;s new
       </h2>
+      <p className="whats-new__lead">The newest memories appear here first.</p>
 
       {loading ? (
         <p className="gallery-loading">Loading what&apos;s new…</p>
@@ -64,6 +55,9 @@ export function WhatsNew() {
                     uploadedByLabel={item.uploadedByLabel}
                     badge="New"
                   />
+                  {item.categoryName && (
+                    <p className="whats-new__category">Also in: {item.categoryName}</p>
+                  )}
                 </article>
               </CountdownUnlock>
             </li>

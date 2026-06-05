@@ -14,6 +14,7 @@ export type ContentPostRow = {
   unlock_at?: string;
   created_at: string;
   sort_order: number;
+  category_id?: string | null;
 };
 
 export type SiteContentItem = {
@@ -29,5 +30,7 @@ export type SiteContentItem = {
   unlockAt: string;
   createdAt: string;
   isStatic: boolean;
-  isNew: boolean;
+  categoryId: string | null;
+  categoryName: string | null;
+  categorySlug: string | null;
 };
