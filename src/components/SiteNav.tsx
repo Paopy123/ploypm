@@ -1,33 +1,39 @@
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import type { SiteViewId } from '../lib/siteView';
 import type { Category } from '../types/category';
 
 type SiteNavProps = {
   categories: Category[];
+  activeView: SiteViewId;
+  onNavigate: (view: SiteViewId) => void;
 };
 
-export function SiteNav({ categories }: SiteNavProps) {
+export function SiteNav({ categories, activeView, onNavigate }: SiteNavProps) {
   const { isAdmin, signOut, loading } = useAuth();
+
+  const linkClass = (view: SiteViewId) =>
+    `site-nav__link${activeView === view ? ' site-nav__link--active' : ''}`;
 
   return (
     <nav className="site-nav" aria-label="Site menu">
       <ul className="site-nav__list">
         <li>
-          <a href="#whats-new" className="site-nav__link">
+          <button type="button" className={linkClass('whats-new')} onClick={() => onNavigate('whats-new')}>
             What&apos;s new
-          </a>
+          </button>
         </li>
         {categories.map((cat) => (
           <li key={cat.id}>
-            <a href={`#episode-${cat.slug}`} className="site-nav__link">
+            <button type="button" className={linkClass(cat.id)} onClick={() => onNavigate(cat.id)}>
               {cat.name}
-            </a>
+            </button>
           </li>
         ))}
         <li>
-          <a href="#letter" className="site-nav__link">
+          <button type="button" className={linkClass('letters')} onClick={() => onNavigate('letters')}>
             Letters
-          </a>
+          </button>
         </li>
         {!loading && (
           <li className="site-nav__auth">

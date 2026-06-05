@@ -43,7 +43,20 @@ export function EpisodeSection({ category, items }: EpisodeSectionProps) {
     };
   }, [lightbox, closeLightbox]);
 
-  if (items.length === 0) return null;
+  if (items.length === 0) {
+    return (
+      <section
+        id={`episode-${category.slug}`}
+        className="section section--wide episode-section"
+        aria-labelledby={`episode-heading-${category.slug}`}
+      >
+        <h2 id={`episode-heading-${category.slug}`} className="section-heading episode-section__heading">
+          {category.name}
+        </h2>
+        <p className="gallery-loading">No memories in this episode yet.</p>
+      </section>
+    );
+  }
 
   const photos = items.filter((i) => i.mediaType === 'photo' && visible[i.id] !== false);
   const videos = items.filter((i) => i.mediaType === 'video');

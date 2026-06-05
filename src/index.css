@@ -756,6 +756,18 @@ h3 {
   font: inherit;
 }
 
+.site-nav__link--active {
+  color: var(--burgundy-deep);
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.site-main {
+  scroll-margin-top: 4.5rem;
+  min-height: 50vh;
+}
+
 /* Episode sections */
 .episode-section__heading {
   scroll-margin-top: 4rem;

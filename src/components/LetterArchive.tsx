@@ -7,9 +7,11 @@ import { LetterCard } from './LetterCard';
 type LetterArchiveProps = {
   letters: Letter[];
   loading?: boolean;
+  /** When true, section title reflects full archive (all letters) */
+  includeFeatured?: boolean;
 };
 
-export function LetterArchive({ letters, loading = false }: LetterArchiveProps) {
+export function LetterArchive({ letters, loading = false, includeFeatured = false }: LetterArchiveProps) {
   const [, tick] = useState(0);
 
   useEffect(() => {
@@ -26,7 +28,11 @@ export function LetterArchive({ letters, loading = false }: LetterArchiveProps) 
       <h2 id="letter-heading" className="section-heading letter-archive__heading">
         <HeartIcon pulse size={24} /> Letters
       </h2>
-      <p className="letter-archive__lead">Every letter I wrote for you, kept here forever.</p>
+      <p className="letter-archive__lead">
+        {includeFeatured
+          ? 'Every letter I wrote for you, kept here forever.'
+          : 'Older letters, kept here forever.'}
+      </p>
 
       {loading ? (
         <p className="gallery-loading">Loading letters…</p>
