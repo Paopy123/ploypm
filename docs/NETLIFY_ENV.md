@@ -29,6 +29,14 @@ Add **each** of these (for admin + gallery + Drive upload):
 | `SUPABASE_URL` | **Same** as `VITE_SUPABASE_URL` |
 | `SUPABASE_SERVICE_ROLE_KEY` | service_role key from Supabase API page (**secret**) |
 
+For Google Analytics (optional), also add:
+
+| Key | Value |
+|-----|--------|
+| `VITE_GA_MEASUREMENT_ID` | `G-XXXXXXXXXX` from GA4 → Admin → Data streams |
+
+See **`docs/GOOGLE_ANALYTICS.md`** for setup steps.
+
 For Google Drive auto-upload (optional), also add:
 
 | Key | Value |

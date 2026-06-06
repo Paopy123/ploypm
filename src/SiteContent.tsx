@@ -11,6 +11,7 @@ import { fetchCategories } from './lib/categories';
 import { fetchDbPosts, WHATS_NEW_COUNT } from './lib/content';
 import { featuredLetter, fetchLetters } from './lib/letters';
 import { hashFromSiteView, parseSiteHash, type SiteViewId } from './lib/siteView';
+import { trackPageView } from './lib/analytics';
 import { fetchSubSections, subSectionsForCategory } from './lib/subSections';
 import { UNCATEGORIZED_CATEGORY, uncategorizedPosts } from './lib/uncategorized';
 import type { Category } from './types/category';
@@ -76,6 +77,7 @@ export function SiteContent() {
       if (window.location.hash !== hash) {
         window.history.replaceState(null, '', hash);
       }
+      trackPageView(`${window.location.pathname}${window.location.search}${hash}`);
       mainRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     },
     [categories, subSections],
