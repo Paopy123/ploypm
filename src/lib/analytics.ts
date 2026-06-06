@@ -15,6 +15,12 @@ export function getPagePath(): string {
 
 export function initAnalytics(): void {
   if (!isAnalyticsEnabled() || initialized || typeof window === 'undefined') return;
+
+  if (window.gtag) {
+    initialized = true;
+    return;
+  }
+
   initialized = true;
 
   window.dataLayer = window.dataLayer ?? [];
