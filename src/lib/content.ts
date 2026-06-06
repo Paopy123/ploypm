@@ -1,6 +1,7 @@
 import { formatSupabaseError } from './errors';
 import { isUnlockedAt } from './unlock';
 import { driveEmbedUrl, isDriveUrl, parseDriveShareLink } from './googleDrive';
+import { randomId } from './id';
 import { getUploaderCredit, getUploaderName } from './uploader';
 import type { ContentPostRow, MediaSource, MediaType, SiteContentItem } from '../types/content';
 import { GALLERY_BUCKET, GALLERY_TABLE, isSupabaseConfigured, supabase } from './supabase';
@@ -174,7 +175,7 @@ export async function createPhotoPost(params: {
   }
 
   const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
-  const path = `photos/${crypto.randomUUID()}.${ext}`;
+  const path = `photos/${randomId()}.${ext}`;
 
   const { error: uploadError } = await supabase.storage.from(GALLERY_BUCKET).upload(path, file, {
     cacheControl: '3600',
