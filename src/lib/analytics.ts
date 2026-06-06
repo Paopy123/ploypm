@@ -1,4 +1,6 @@
-const GA_ID = (import.meta.env.VITE_GA_MEASUREMENT_ID ?? '').trim();
+import { GA_MEASUREMENT_ID } from '../content';
+
+const GA_ID = (import.meta.env.VITE_GA_MEASUREMENT_ID || GA_MEASUREMENT_ID).trim();
 
 let initialized = false;
 

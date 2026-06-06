@@ -16,6 +16,9 @@ export const SITE_TITLE = 'Every moment with Ploypm';
 export const SITE_SUBTITLE = 'Something made just for you';
 export const HERO_HINT = 'Tap anywhere';
 
+/** Google Analytics — from GA4 → Admin → Data streams (leave empty to disable) */
+export const GA_MEASUREMENT_ID = 'G-5M5X2KQ6LZ';
+
 /** Path to your intro video (place intro.mp4 in public/media/) */
 export const VIDEO_PATH = '/media/intro.mp4';
 
