@@ -131,7 +131,7 @@ export function SiteContent() {
 
   const handlePageClick = (e: { clientX: number; clientY: number; target: EventTarget | null }) => {
     const target = e.target as HTMLElement;
-    if (target.closest('button, a, video, input, textarea, select')) return;
+    if (target.closest('button, a, video, input, textarea, select, iframe, .media-player, .video-wrap')) return;
     spawnHeart(e.clientX, e.clientY);
   };
 
