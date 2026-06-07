@@ -37,6 +37,14 @@ For Google Analytics (optional), also add:
 
 See **`docs/GOOGLE_ANALYTICS.md`** for setup steps.
 
+For letter-open email alerts to **pao51613@gmail.com**, add:
+
+| Key | Value |
+|-----|--------|
+| `RESEND_API_KEY` | `re_…` from [Resend](https://resend.com) |
+
+See **`docs/LETTER_EMAIL_SETUP.md`**.
+
 For Google Drive auto-upload (optional), also add:
 
 | Key | Value |

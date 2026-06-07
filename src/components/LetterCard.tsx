@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { notifyLetterOpened } from '../lib/letterNotify';
 import { isUnlockedAt } from '../lib/unlock';
 import type { Letter } from '../types/letter';
 import { CountdownUnlock } from './CountdownUnlock';
@@ -27,7 +28,16 @@ export function LetterCard({ letter, featured = false }: LetterCardProps) {
         </header>
 
         {!open ? (
-          <button type="button" className="letter-btn letter-card__open" onClick={() => setOpen(true)}>
+          <button
+            type="button"
+            className="letter-btn letter-card__open"
+            onClick={() => {
+              setOpen(true);
+              if (unlocked) {
+                void notifyLetterOpened({ letterId: letter.id, letterTitle: letter.title });
+              }
+            }}
+          >
             <span className="letter-btn__inner">
               <HeartIcon size={16} />
               Open the letter
